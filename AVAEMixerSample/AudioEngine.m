@@ -45,6 +45,9 @@
     // mananging session and configuration changes
     BOOL                    _isSessionInterrupted;
     BOOL                    _isConfigChangePending;
+    
+    MIDIClientRef client;
+    MIDIEndpointRef midiIn;
 }
 
 - (void)handleInterruption:(NSNotification *)notification;
@@ -76,11 +79,12 @@
         // make engine connections
         [self makeEngineConnections];
         
-        // create the audio sequencer
-        [self createAndSetupSequencer];
-        
+
         // set initial default values
         [self setNodeDefaults];
+        
+        // create the audio sequencer
+        [self createAndSetupSequencer];
         
         NSLog(@"%@", _engine.description);
         
@@ -327,6 +331,28 @@
     }];
     
     [_sequencer prepareToPlay];
+    
+    CFStringRef clientName =  (CFStringRef) @"Client Name";
+    OSStatus status = MIDIClientCreateWithBlock(clientName, &client, ^(const MIDINotification *message){
+        
+    });
+    NSLog(@"status: %d", (int)status);
+    CFStringRef string =  (CFStringRef) @"MIDI event sampler Test";
+    
+    status = MIDIDestinationCreateWithBlock(client, string, &midiIn,^(const MIDIPacketList *pktlist, void * __nullable srcConnRefCon) {
+        MIDIPacket *packet = &pktlist->packet[0];
+        for (int i = 0; i < pktlist->numPackets; ++i) {
+            packet = MIDIPacketNext (packet);
+            NSLog(@"capture MIDI event by pass MIDI event to sampler here");
+        }
+        //NSLog(@"capture MIDI event %@", packet);
+    });
+    NSLog(@"status: %d", (int)status);
+    
+    [_sequencer.tracks enumerateObjectsUsingBlock:^(AVMusicTrack * __nonnull track, NSUInteger idx, BOOL * __nonnull stop) {
+        //track.destinationAudioUnit = _sampler;
+        track.destinationMIDIEndpoint = midiIn;
+    }];
     
 }
 
@@ -772,8 +798,8 @@
     [self initAndCreateNodes];
     [self createEngineAndAttachNodes];
     [self makeEngineConnections];
-    [self createAndSetupSequencer]; // recreate the sequencer with the new AVAudioEngine
     [self setNodeDefaults];
+    [self createAndSetupSequencer]; // recreate the sequencer with the new AVAudioEngine
 
     // notify the delegate
     if ([self.delegate respondsToSelector:@selector(engineConfigurationHasChanged)]) {
